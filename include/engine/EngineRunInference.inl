@@ -275,9 +275,11 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
 template <typename T>
 bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::Mat &output) {
     cv::cuda::GpuMat gpuOutput;
-    bool result = runInference(inputs, gpuOutput);
-    gpuOutput.download(output);
-    return result;
+    bool didSucceed = runInference(inputs, gpuOutput);
+    if (didSucceed) {
+        gpuOutput.download(output);
+    }
+    return didSucceed;
 }
 
 
