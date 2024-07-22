@@ -148,6 +148,12 @@ public:
     // Output format [batch][output][feature_vector]
     bool runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, std::vector<std::vector<std::vector<T>>> &featureVectors);
 
+
+    // Run inference.
+    // Input format [input][cv::cuda::GpuMat]
+    // Output format [batch][output][feature_vector]
+    bool runInference(const cv::Mat &input, cv::Mat &output);
+
     // Utility method for resizing an image while maintaining the aspect ratio by
     // adding padding to smaller dimension after scaling While letterbox padding
     // normally adds padding to top & bottom, or left & right sides, this
@@ -171,6 +177,8 @@ public:
     static void transformOutput(std::vector<std::vector<std::vector<T>>> &input, std::vector<T> &output);
     // Convert NHWC to NCHW and apply scaling and mean subtraction
     static cv::cuda::GpuMat blobFromGpuMats(const std::vector<cv::cuda::GpuMat> &batchInput, const std::array<float, 3> &subVals,
+                                            const std::array<float, 3> &divVals, bool normalize);
+    static cv::cuda::GpuMat blobFromMat(const cv::Mat &batchInput, const std::array<float, 3> &subVals,
                                             const std::array<float, 3> &divVals, bool normalize);
 
 private:
@@ -360,9 +368,10 @@ bool Engine<T>::loadNetwork(std::string trtModelPath, const std::array<float, 3>
             } else if (tensorDataType == nvinfer1::DataType::kUINT8 && !std::is_same<uint8_t, T>::value) {
                 throw std::runtime_error("Error, the model has expected output of type uint8_t. Engine "
                                          "class template parameter must be adjusted.");
-            } else if (tensorDataType == nvinfer1::DataType::kFP8) {
-                throw std::runtime_error("Error, model has unsupported output type");
             }
+            // } else if (tensorDataType == nvinfer1::DataType::kFP8) {
+                // throw std::runtime_error("Error, model has unsupported output type");
+            // }
 
             // The binding is an output
             uint32_t outputLength = 1;
@@ -553,6 +562,154 @@ bool Engine<T>::build(std::string onnxModelPath, const std::array<float, 3> &sub
 }
 
 template <typename T>
+bool Engine<T>::runInference(const cv::Mat &input,
+                             cv::Mat &output) {
+    const auto numInputs = m_inputDims.size();
+    if (numInputs > 1) {
+        std::cout << "===== Error =====" << std::endl;
+        std::cout << "Incorrect number of inputs provided!" << std::endl;
+        return false;
+    }
+
+    // Ensure the batch size does not exceed the max
+    if (input.size[0] > static_cast<size_t>(m_options.maxBatchSize)) {
+        std::cout << "===== Error =====" << std::endl;
+        std::cout << "The batch size is larger than the model expects!" << std::endl;
+        std::cout << "Model max batch size: " << m_options.maxBatchSize << std::endl;
+        std::cout << "Batch size provided to call to runInference: " << input.size[0] << std::endl;
+        return false;
+    }
+
+    // Ensure that if the model has a fixed batch size that is greater than 1, the
+    // input has the correct length
+    if (m_inputBatchSize != -1 && input.size[0] != static_cast<size_t>(m_inputBatchSize)) {
+        std::cout << "===== Error =====" << std::endl;
+        std::cout << "The batch size is different from what the model expects!" << std::endl;
+        std::cout << "Model batch size: " << m_inputBatchSize << std::endl;
+        std::cout << "Batch size provided to call to runInference: " << input.size[0] << std::endl;
+        return false;
+    }
+
+    const auto batchSize = static_cast<int32_t>(input.size[0]);
+
+    // Create the cuda stream that will be used for inference
+    cudaStream_t inferenceCudaStream;
+    Util::checkCudaErrorCode(cudaStreamCreate(&inferenceCudaStream));
+
+    std::vector<cv::cuda::GpuMat> preprocessedInputs;
+
+    // Preprocess the input
+    const auto &batchInput = input;
+    const auto &dims = m_inputDims[0];
+
+    // auto &input = batchInput[0];
+    if (batchInput.size[1] != dims.d[0] || batchInput.size[2] != dims.d[1] || batchInput.size[3] != dims.d[2]) {
+        std::cout << "===== Error =====" << std::endl;
+        std::cout << "batchInput does not have correct size!" << std::endl;
+        std::cout << "Expected: (" << dims.d[0] << ", " << dims.d[1] << ", " << dims.d[2] << ")" << std::endl;
+        std::cout << "Got: (" << batchInput.size[1] << ", " << batchInput.size[2] << ", " << batchInput.size[3] << ")" << std::endl;
+        std::cout << "Ensure you resize your batched input to the correct size" << std::endl;
+        return false;
+    }
+
+    nvinfer1::Dims4 inputDims = {batchSize, dims.d[0], dims.d[1], dims.d[2]};
+    std::cout << "m_IOTensorNames: " << m_IOTensorNames[0] << std::endl;
+    m_context->setInputShape(m_IOTensorNames[0].c_str(),
+                             inputDims); // Define the batch size
+
+    auto tShape = m_context->getTensorShape(m_IOTensorNames[0].c_str());
+    // print shape
+    std::cout << "Shape: ";
+    for (int i = 0; i < tShape.nbDims; ++i)
+        std::cout << tShape.d[i] << " ";
+    std::cout << std::endl;
+
+    // OpenCV reads images into memory in NHWC format, while TensorRT expects
+    // images in NCHW format. The following method converts NHWC to NCHW. Even
+    // though TensorRT expects NCHW at IO, during optimization, it can
+    // internally use NHWC to optimize cuda kernels See:
+    // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#data-layout
+    // Copy over the input data and perform the preprocessing
+    // auto mfloat = blobFromGpuMats(batchInput, m_subVals, m_divVals, m_normalize);
+    auto mfloat = blobFromMat(batchInput, m_subVals, m_divVals, m_normalize);
+    preprocessedInputs.push_back(mfloat);
+    m_buffers[0] = mfloat.ptr<void>();
+
+    // Ensure all dynamic bindings have been defined.
+    int32_t const size(m_engine->getNbIOTensors());
+    std::vector<char const*> names(size);
+    int32_t const nbNames = m_context->inferShapes(size, names.data());
+    // if (!m_context->allInputDimensionsSpecified()) {
+    if (nbNames < 0) {
+        throw std::runtime_error("Error, not all required dimensions specified.");
+    }
+
+    // Set the address of the input and output buffers
+    for (size_t i = 0; i < m_buffers.size(); ++i) {
+        bool status = m_context->setTensorAddress(m_IOTensorNames[i].c_str(), m_buffers[i]);
+        if (!status) {
+            return false;
+        }
+    }
+
+    // Run inference.
+    bool status = m_context->enqueueV3(inferenceCudaStream);
+    if (!status) {
+        return false;
+    }
+
+    // Copy the outputs back to CPU
+    const auto outputLength = m_outputLengths[0];
+    output = cv::Mat(batchSize, outputLength, CV_32F);
+
+    int32_t outputBinding = numInputs; // We start at index m_inputDims.size() to account for the inputs in our m_buffers
+    Util::checkCudaErrorCode(cudaMemcpyAsync(output.data, 
+                                             static_cast<char *>(m_buffers[outputBinding]),
+                                             outputLength * sizeof(T) * batchSize, cudaMemcpyDeviceToHost, inferenceCudaStream));
+
+    // // Copy the outputs back to CPU
+    // featureVectors.clear();
+
+    // for (int batch = 0; batch < batchSize; ++batch) {
+    //     // Batch
+    //     std::vector<std::vector<T>> batchOutputs{};
+    //     for (int32_t outputBinding = numInputs; outputBinding < m_engine->getNbIOTensors(); ++outputBinding) {
+    //         // We start at index m_inputDims.size() to account for the inputs in our
+    //         // m_buffers
+    //         std::vector<T> output;
+    //         auto outputLength = m_outputLengths[outputBinding - numInputs];
+    //         output.resize(outputLength);
+    //         // Copy the output
+    //         Util::checkCudaErrorCode(cudaMemcpyAsync(output.data(),
+    //                                                  static_cast<char *>(m_buffers[outputBinding]) + (batch * sizeof(T) * outputLength),
+    //                                                  outputLength * sizeof(T), cudaMemcpyDeviceToHost, inferenceCudaStream));
+    //         batchOutputs.emplace_back(std::move(output));
+    //     }
+    //     featureVectors.emplace_back(std::move(batchOutputs));
+    // }
+
+    // Synchronize the cuda stream
+    Util::checkCudaErrorCode(cudaStreamSynchronize(inferenceCudaStream));
+    Util::checkCudaErrorCode(cudaStreamDestroy(inferenceCudaStream));
+
+    // transpose output matrix
+    // output = output.t();
+    
+    // print first batch of inputMatrix
+    // auto tmp = batchInput({cv::Range(0,1), cv::Range::all(), cv::Range::all(), cv::Range::all()}).reshape(1, {32, 32});
+    // std::cout << "batch: " << tmp.row(0) << std::endl;
+
+    // std::cout << "number of features: " << output.size[0] << std::endl;
+    // std::cout << "feature length: " << output.size[1] << std::endl;
+    // std::cout << "first feature: " << output.row(0) << std::endl;
+    // std::cout << "second feature: " << output.row(1) << std::endl;
+    // std::cout << "last feature: " << output.row(output.size[0] - 1) << std::endl;
+
+
+    return true;
+}
+
+template <typename T>
 bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs,
                              std::vector<std::vector<std::vector<T>>> &featureVectors) {
     // First we do some error checking
@@ -683,24 +840,24 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
 template <typename T>
 cv::cuda::GpuMat Engine<T>::blobFromGpuMats(const std::vector<cv::cuda::GpuMat> &batchInput, const std::array<float, 3> &subVals,
                                             const std::array<float, 3> &divVals, bool normalize) {
-    cv::cuda::GpuMat gpu_dst(1, batchInput[0].rows * batchInput[0].cols * batchInput.size(), CV_8UC3);
+    cv::cuda::GpuMat gpu_dst(1, batchInput[0].rows * batchInput[0].cols * batchInput.size(), CV_32FC1);
 
     size_t width = batchInput[0].cols * batchInput[0].rows;
     for (size_t img = 0; img < batchInput.size(); img++) {
         std::vector<cv::cuda::GpuMat> input_channels{
-            cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[0 + width * 3 * img])),
-            cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width + width * 3 * img])),
-            cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width * 2 + width * 3 * img]))};
+            cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpu_dst.ptr()[0 + width * 3 * img])),
+            cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpu_dst.ptr()[width + width * 3 * img])),
+            cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpu_dst.ptr()[width * 2 + width * 3 * img]))};
         cv::cuda::split(batchInput[img], input_channels); // HWC -> CHW
     }
 
     cv::cuda::GpuMat mfloat;
     if (normalize) {
         // [0.f, 1.f]
-        gpu_dst.convertTo(mfloat, CV_32FC3, 1.f / 255.f);
+        gpu_dst.convertTo(mfloat, CV_32FC1, 1.f / 255.f);
     } else {
         // [0.f, 255.f]
-        gpu_dst.convertTo(mfloat, CV_32FC3);
+        gpu_dst.convertTo(mfloat, CV_32FC1);
     }
 
     // Apply scaling and mean subtraction
@@ -708,6 +865,63 @@ cv::cuda::GpuMat Engine<T>::blobFromGpuMats(const std::vector<cv::cuda::GpuMat> 
     cv::cuda::divide(mfloat, cv::Scalar(divVals[0], divVals[1], divVals[2]), mfloat, 1, -1);
 
     return mfloat;
+}
+
+
+
+template <typename T>
+cv::cuda::GpuMat Engine<T>::blobFromMat(const cv::Mat &batchInput, const std::array<float, 3> &subVals,
+                                            const std::array<float, 3> &divVals, bool normalize) {
+
+    // std::vector<cv::Mat> channels;
+    // cv::split(batchInput, channels);
+    // // Stretch one-channel images to vector
+    // for (auto &tmp : channels) {
+    //     tmp = tmp.reshape(1, 1);
+    // }
+
+    // cv::Mat batchInputReshaped;
+    // cv::hconcat(channels, batchInputReshaped);
+
+    // batchInputReshaped = cv::Mat::zeros(1, batchInput.size[0] * batchInput.size[1] * batchInput.size[2] * batchInput.size[3], CV_32F);
+
+    // std::cout << "reshaped size: " << batchInputReshaped.size[0] << ", " << batchInputReshaped.size[1] << std::endl;
+
+    // cv::cuda::GpuMat mfloat; //(batchInput.size(), batchInput.type());
+    // cv::cuda::GpuMat gpu_dst(1, batchInput.size[0] * batchInput.size[1] * batchInput.size[2], CV_32FC1);
+    // gpu_dst.upload(batchInput);
+    // std::cout << "input type: " << batchInput.type() << std::endl;
+    cv::Mat batchInputFlat = batchInput.reshape(1, {1, batchInput.size[0] * batchInput.size[1] * batchInput.size[2] * batchInput.size[3]});
+    // batchInputFlat.convertTo(batchInputFlat, CV_32FC1);
+    // cv::cuda::GpuMat gpu_dst(batchInput.reshape(1, {1, batchInput.size[0] * batchInput.size[1] * batchInput.size[2] * batchInput.size[3]}));
+    // gpu_dst.upload(batchInputFlat);
+    cv::cuda::GpuMat gpu_dst(batchInputFlat);
+    // std::cout << "GPU mat element size: " << gpu_dst.elemSize() << std::endl;
+
+
+    // size_t width = batchInput[0].cols * batchInput[0].rows;
+    // for (size_t img = 0; img < batchInput.size(); img++) {
+    //     std::vector<cv::cuda::GpuMat> input_channels{
+    //         cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpu_dst.ptr()[0 + width * 3 * img])),
+    //         cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpu_dst.ptr()[width + width * 3 * img])),
+    //         cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpu_dst.ptr()[width * 2 + width * 3 * img]))};
+    //     cv::cuda::split(batchInput[img], input_channels); // HWC -> CHW
+    // }
+
+    // cv::cuda::GpuMat mfloat;
+    // if (normalize) {
+    //     // [0.f, 1.f]
+    //     gpu_dst.convertTo(mfloat, CV_32FC1, 1.f / 255.f);
+    // } else {
+    //     // [0.f, 255.f]
+    //     gpu_dst.convertTo(mfloat, CV_32FC1);
+    // }
+
+    // // Apply scaling and mean subtraction
+    // cv::cuda::subtract(mfloat, cv::Scalar(subVals[0], subVals[1], subVals[2]), mfloat, cv::noArray(), -1);
+    // cv::cuda::divide(mfloat, cv::Scalar(divVals[0], divVals[1], divVals[2]), mfloat, 1, -1);
+
+    return gpu_dst;
 }
 
 template <typename T> std::string Engine<T>::serializeEngineOptions(const Options &options, const std::string &onnxModelPath) {
