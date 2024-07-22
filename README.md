@@ -1,6 +1,6 @@
 [![Stargazers][stars-shield]][stars-url]
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-1-orange.svg?style=flat-square)](#contributors-)
+[![All Contributors](https://img.shields.io/badge/all_contributors-3-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 [![Issues][issues-shield]][issues-url]
 [![LinkedIn][linkedin-shield]][linkedin-url]
@@ -52,7 +52,7 @@ The following instructions assume you are using Ubuntu 20.04 or 22.04.
 You will need to supply your own onnx model for this sample code or you can download the sample model (see Sanity Check section below). 
 
 ### Prerequisites
-- Tested and working on Ubuntu 20.04 and 22.04
+- Tested and working on Ubuntu 20.04 and 22.04 (Windows is **not** supported at this time)
 - Install CUDA 11 or 12, instructions [here](https://developer.nvidia.com/cuda-downloads).
   - Recommended >= 12.0
   - Required >= 11.0
@@ -61,6 +61,7 @@ You will need to supply your own onnx model for this sample code or you can down
   - Required < 9 (OpenCV GPU does not yet support)
 - `sudo apt install build-essential`
 - `sudo snap install cmake --classic`
+- `sudo apt install libspdlog-dev libfmt-dev` (for logging)
 - Install OpenCV with cuda support. To compile OpenCV from source, run the `build_opencv.sh` script provided in `./scripts/`.
   - If you use the provided script and you have installed cuDNN to a non-standard location, you must modify the `CUDNN_INCLUDE_DIR` and `CUDNN_LIBRARY` variables in the script.  
   - Recommended >= 4.8
@@ -133,12 +134,35 @@ Benchmarks run on RTX 3050 Ti Laptop GPU, 11th Gen Intel(R) Core(TM) i9-11900H @
 Wondering how to integrate this library into your project? Or perhaps how to read the outputs of the YoloV8 model to extract meaningful information? 
 If so, check out my two latest projects, [YOLOv8-TensorRT-CPP](https://github.com/cyrusbehr/YOLOv8-TensorRT-CPP) and [YOLOv9-TensorRT-CPP](https://github.com/cyrusbehr/YOLOv9-TensorRT-CPP), which demonstrate how to use the TensorRT C++ API to run YoloV8/9 inference (supports object detection, semantic segmentation, and body pose estimation). They make use of this project in the backend!
 
+### Project Structure
+```sh
+project-root/
+├── include/
+│   ├── engine/
+│   │   ├── EngineRunInference.inl
+│   │   ├── EngineUtilities.inl
+│   │   └── EngineBuildLoadNetwork.inl
+│   ├── util/...
+│   ├── ...
+├── src/
+|   ├── ...
+│   ├── engine.cpp
+│   ├── engine.h
+│   └── main.cpp
+├── CMakeLists.txt
+└── README.md
+```
+
 ### Understanding the Code
-- The bulk of the implementation is in `src/engine.cpp`. I have written lots of comments all throughout the code which should make it easy to understand what is going on. 
+- The bulk of the implementation is located in `include/engine`. I have written lots of comments all throughout the code which should make it easy to understand what is going on. 
+- The inference code is located in `include/engine/EngineRunInference.inl`. 
+- The building and loading of the TensorRT engine file is located in `include/engine/EngineBuildLoadNetwork.inl`.
 - You can also check out my [deep-dive video](https://youtu.be/Z0n5aLmcRHQ) in which I explain every line of code.
 
 ### How to Debug
-- If you have issues creating the TensorRT engine file from the onnx model, navigate to `src/engine.cpp` and change the log level by changing the severity level to `kVERBOSE` and rebuild and rerun. This should give you more information on where exactly the build process is failing.
+- The implementation uses the `spdlog` library for logging. You can change the log level by setting the environment variable `LOG_LEVEL` to one of the following values: `trace`, `debug`, `info`, `warn`, `error`, `critical`, `off`.
+
+- If you have issues creating the TensorRT engine file from the onnx model, consider setting the environment variable `LOG_LEVEL` to `trace` and re-run the application. This should give you more information on where exactly the build process is failing.
 
 ### Show your Appreciation
 If this project was helpful to you, I would appreciate if you could give it a star. That will encourage me to ensure it's up to date and solve issues quickly. I also do consulting work if you require more specific help. Connect with me on [LinkedIn](https://www.linkedin.com/in/cyrus-behroozi/). 
@@ -152,6 +176,8 @@ If this project was helpful to you, I would appreciate if you could give it a st
   <tbody>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://ltetrel.github.io/"><img src="https://avatars.githubusercontent.com/u/37963074?v=4?s=100" width="100px;" alt="Loic Tetrel"/><br /><sub><b>Loic Tetrel</b></sub></a><br /><a href="https://github.com/cyrusbehr/tensorrt-cpp-api/commits?author=ltetrel" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/thomaskleiven"><img src="https://avatars.githubusercontent.com/u/17145074?v=4?s=100" width="100px;" alt="thomaskleiven"/><br /><sub><b>thomaskleiven</b></sub></a><br /><a href="https://github.com/cyrusbehr/tensorrt-cpp-api/commits?author=thomaskleiven" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/qq978358810"><img src="https://avatars.githubusercontent.com/u/45676681?v=4?s=100" width="100px;" alt="WiCyn"/><br /><sub><b>WiCyn</b></sub></a><br /><a href="https://github.com/cyrusbehr/tensorrt-cpp-api/commits?author=qq978358810" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
