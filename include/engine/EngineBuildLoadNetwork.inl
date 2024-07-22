@@ -157,10 +157,10 @@ bool Engine<T>::loadNetwork(std::string trtModelPath, const std::array<float, 3>
                 auto msg = "Error, the model has expected output of type uint8_t. Engine class template parameter must be adjusted.";
                 spdlog::error(msg);
                 throw std::runtime_error(msg);
-            } else if (tensorDataType == nvinfer1::DataType::kFP8) {
-                auto msg = "Error, the model has expected output of type kFP8. This is not supported by the Engine class.";
-                spdlog::error(msg);
-                throw std::runtime_error(msg);
+            // } else if (tensorDataType == nvinfer1::DataType::kFP8) {
+            //     auto msg = "Error, the model has expected output of type kFP8. This is not supported by the Engine class.";
+            //     spdlog::error(msg);
+            //     throw std::runtime_error(msg);
             }
 
             // The binding is an output
