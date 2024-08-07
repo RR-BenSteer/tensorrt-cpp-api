@@ -15,6 +15,8 @@ public:
                              const std::array<float, 3> &divVals = {1.f, 1.f, 1.f}, bool normalize = true) = 0;
     virtual bool runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, 
                               std::vector<std::vector<std::vector<T>>> &featureVectors) = 0;
+    virtual bool runInference(const cv::Mat &input, cv::Mat &output) = 0;
+    virtual bool runInferenceCUDA(const std::vector<int> &inputShape, T *input, cv::Mat &output) = 0;
     virtual const std::vector<nvinfer1::Dims3> &getInputDims() const = 0;
     virtual const std::vector<nvinfer1::Dims> &getOutputDims() const = 0;
 };

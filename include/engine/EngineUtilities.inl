@@ -138,3 +138,58 @@ template <typename T> void Engine<T>::clearGpuBuffers() {
         m_buffers.clear();
     }
 }
+
+template <typename T>
+cv::cuda::GpuMat Engine<T>::blobFromMat(const cv::Mat &batchInput, const std::array<float, 3> &subVals,
+                                            const std::array<float, 3> &divVals, bool normalize) {
+
+    // std::vector<cv::Mat> channels;
+    // cv::split(batchInput, channels);
+    // // Stretch one-channel images to vector
+    // for (auto &tmp : channels) {
+    //     tmp = tmp.reshape(1, 1);
+    // }
+
+    // cv::Mat batchInputReshaped;
+    // cv::hconcat(channels, batchInputReshaped);
+
+    // batchInputReshaped = cv::Mat::zeros(1, batchInput.size[0] * batchInput.size[1] * batchInput.size[2] * batchInput.size[3], CV_32F);
+
+    // std::cout << "reshaped size: " << batchInputReshaped.size[0] << ", " << batchInputReshaped.size[1] << std::endl;
+
+    // cv::cuda::GpuMat mfloat; //(batchInput.size(), batchInput.type());
+    // cv::cuda::GpuMat gpu_dst(1, batchInput.size[0] * batchInput.size[1] * batchInput.size[2], CV_32FC1);
+    // gpu_dst.upload(batchInput);
+    // std::cout << "input type: " << batchInput.type() << std::endl;
+    cv::Mat batchInputFlat = batchInput.reshape(1, {1, batchInput.size[0] * batchInput.size[1] * batchInput.size[2] * batchInput.size[3]});
+    // batchInputFlat.convertTo(batchInputFlat, CV_32FC1);
+    // cv::cuda::GpuMat gpu_dst(batchInput.reshape(1, {1, batchInput.size[0] * batchInput.size[1] * batchInput.size[2] * batchInput.size[3]}));
+    // gpu_dst.upload(batchInputFlat);
+    cv::cuda::GpuMat gpu_dst(batchInputFlat);
+    // std::cout << "GPU mat element size: " << gpu_dst.elemSize() << std::endl;
+
+
+    // size_t width = batchInput[0].cols * batchInput[0].rows;
+    // for (size_t img = 0; img < batchInput.size(); img++) {
+    //     std::vector<cv::cuda::GpuMat> input_channels{
+    //         cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpu_dst.ptr()[0 + width * 3 * img])),
+    //         cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpu_dst.ptr()[width + width * 3 * img])),
+    //         cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpu_dst.ptr()[width * 2 + width * 3 * img]))};
+    //     cv::cuda::split(batchInput[img], input_channels); // HWC -> CHW
+    // }
+
+    // cv::cuda::GpuMat mfloat;
+    // if (normalize) {
+    //     // [0.f, 1.f]
+    //     gpu_dst.convertTo(mfloat, CV_32FC1, 1.f / 255.f);
+    // } else {
+    //     // [0.f, 255.f]
+    //     gpu_dst.convertTo(mfloat, CV_32FC1);
+    // }
+
+    // // Apply scaling and mean subtraction
+    // cv::cuda::subtract(mfloat, cv::Scalar(subVals[0], subVals[1], subVals[2]), mfloat, cv::noArray(), -1);
+    // cv::cuda::divide(mfloat, cv::Scalar(divVals[0], divVals[1], divVals[2]), mfloat, 1, -1);
+
+    return gpu_dst;
+}
