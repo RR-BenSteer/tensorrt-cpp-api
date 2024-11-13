@@ -24,11 +24,30 @@ template <typename T> void Engine<T>::transformOutput(std::vector<std::vector<st
 }
 
 template <typename T>
+int Engine<T>::constrainToMultipleOf(const float x, const int multiple, const int min_val, const int max_val) {
+    int y;
+    y = std::round(x / multiple) * multiple;
+    if (max_val > 0 && y > max_val)
+        y = std::floor(x / multiple) * multiple;
+    if (y < min_val)
+        y = std::ceil(x / multiple) * multiple;
+    return y;
+}
+
+template <typename T>
+void Engine<T>::extractAndResizeROI(const cv::Mat &input, cv::Mat &output, size_t roi_h, size_t roi_w, size_t height, size_t width) {
+    cv::Mat roi = input(cv::Rect(0, 0, roi_w, roi_h));
+    cv::resize(roi, output, cv::Size(width, height), 0, 0, cv::INTER_LINEAR);
+}
+
+template <typename T>
 cv::cuda::GpuMat Engine<T>::resizeKeepAspectRatioPadRightBottom(const cv::cuda::GpuMat &input, size_t height, size_t width,
-                                                                const cv::Scalar &bgcolor) {
+                                                                int &unpad_h, int &unpad_w, const int multiple, const cv::Scalar &bgcolor) {
     float r = std::min(width / (input.cols * 1.0), height / (input.rows * 1.0));
-    int unpad_w = r * input.cols;
-    int unpad_h = r * input.rows;
+    unpad_w = r * input.cols;
+    unpad_w = constrainToMultipleOf(unpad_w, multiple, width, -1);
+    unpad_h = r * input.rows;
+    unpad_h = constrainToMultipleOf(unpad_h, multiple, height, -1);
     cv::cuda::GpuMat re(unpad_h, unpad_w, CV_8UC3);
     cv::cuda::resize(input, re, re.size());
     cv::cuda::GpuMat out(height, width, CV_8UC3, bgcolor);

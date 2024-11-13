@@ -25,6 +25,12 @@ find_package(CUDA REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(fmt REQUIRED)
 
+include(FindCUDA)
+cuda_select_nvcc_arch_flags(ARCH_FLAGS)
+message(STATUS "Setting CUDA arch to ${ARCH_FLAGS}")
+set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} ${ARCH_FLAGS}")
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} "-O3")
+
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 add_library(tensorrt_cpp_api SHARED

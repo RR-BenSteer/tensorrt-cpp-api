@@ -107,7 +107,8 @@ int main(int argc, char *argv[]) {
             // Engine::resizeKeepAspectRatioPadRightBottom to resize to a square while
             // maintain the aspect ratio (adds padding where necessary to achieve
             // this).
-            auto resized = Engine<float>::resizeKeepAspectRatioPadRightBottom(img, inputDim.d[1], inputDim.d[2]);
+            int tmp_h, tmp_w;
+            auto resized = Engine<float>::resizeKeepAspectRatioPadRightBottom(img, inputDim.d[1], inputDim.d[2], tmp_h, tmp_w);
             // You could also perform a resize operation without maintaining aspect
             // ratio with the use of padding by using the following instead:
             //            cv::cuda::resize(img, resized, cv::Size(inputDim.d[2],

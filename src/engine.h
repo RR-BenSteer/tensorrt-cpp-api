@@ -90,10 +90,15 @@ public:
     // Output format [batch][output][feature_vector]
     bool runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, std::vector<std::vector<std::vector<T>>> &featureVectors) override;
 
+    // Run inference.
+    // Input format [input][batch][cv::cuda::GpuMat]
+    // Output format [cv::Mat]
+    bool runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::Mat &output) override;
+
 
     // Run inference.
-    // Input format [input][cv::cuda::GpuMat]
-    // Output format [batch][output][feature_vector]
+    // Input format [cv::Mat]
+    // Output format [cv::Mat
     bool runInference(const cv::Mat &input, cv::Mat &output) override;
 
     // Run inference.
@@ -109,7 +114,18 @@ public:
     // so that it's easier to convert detected coordinates (ex. YOLO model) back
     // to the original reference frame.
     static cv::cuda::GpuMat resizeKeepAspectRatioPadRightBottom(const cv::cuda::GpuMat &input, size_t height, size_t width,
+                                                                int &unpad_h, int &unpad_w, const int multiple = 1, 
                                                                 const cv::Scalar &bgcolor = cv::Scalar(0, 0, 0));
+
+    // Utility method for constraining a value to be an integer multiple of another integer.
+    // The min and max values can be used to specify an upper or lower bound of the value.
+    static int constrainToMultipleOf(const float x, const int multiple, const int min_val, const int max_val);
+
+    // Utility method for extracting an ROI from an image and rescaling it to the specified dimensions.
+    // The ROI is extracted from the top left of the image. This function is the complement of 
+    // the above function for networks that predict output maps.
+    static void extractAndResizeROI(const cv::Mat &input, cv::Mat &output, size_t roi_h, size_t roi_w, size_t height, size_t width);
+
 
     [[nodiscard]] const std::vector<nvinfer1::Dims3> &getInputDims() const override { return m_inputDims; };
     [[nodiscard]] const std::vector<nvinfer1::Dims> &getOutputDims() const override { return m_outputDims; };

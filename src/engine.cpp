@@ -91,7 +91,8 @@ bool Int8EntropyCalibrator2::getBatch(void **bindings, const char **names, int32
         //cv::cuda::cvtColor(gpuImg, gpuImg, cv::COLOR_BGR2RGB);
 
         // TODO: Define any preprocessing code here, such as resizing
-        auto resized = Engine<float>::resizeKeepAspectRatioPadRightBottom(gpuImg, m_inputH, m_inputW);
+        int tmp_h, tmp_w;
+        auto resized = Engine<float>::resizeKeepAspectRatioPadRightBottom(gpuImg, m_inputH, m_inputW, tmp_h, tmp_w);
 
         inputImgs.emplace_back(std::move(resized));
     }
