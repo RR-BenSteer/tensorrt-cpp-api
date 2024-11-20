@@ -12,12 +12,15 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Ofast -DNDEBUG -Wno-deprecated-de
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
 # TODO: Specify the path to TensorRT root dir
-# if (NOT TensorRT_DIR)
-#     set(TensorRT_DIR /usr/src/tensorrt)
-# #     set(TensorRT_DIR /usr/lib/x86_64-linux-gnu)
-# endif()
-# # Use the correct version of CUDA
-# set(CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda)
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm" OR CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+    message(STATUS "Building for an ARM architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+    if (NOT TensorRT_DIR)
+        set(TensorRT_DIR /usr/src/tensorrt)
+        # set(TensorRT_DIR /usr/lib/x86_64-linux-gnu)
+    endif()
+    # Use the correct version of CUDA
+    set(CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda)
+endif ()
 
 # We require CUDA, OpenCV, and TensorRT
 find_package(TensorRT REQUIRED)
@@ -25,11 +28,16 @@ find_package(CUDA REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(fmt REQUIRED)
 
-include(FindCUDA)
-cuda_select_nvcc_arch_flags(ARCH_FLAGS)
-message(STATUS "Setting CUDA arch to ${ARCH_FLAGS}")
-set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} ${ARCH_FLAGS}")
-set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} "-O3")
+# Automatically detect and set CUDA architecture
+set(CMAKE_CUDA_ARCHITECTURES "")
+# Fallback architectures if auto-detection fails
+if(NOT CMAKE_CUDA_ARCHITECTURES)
+    message(WARNING "CUDA architectures not detected, using fallback.")
+    set(CMAKE_CUDA_ARCHITECTURES 72)
+endif()
+message(STATUS "Setting CUDA arch to ${CMAKE_CUDA_ARCHITECTURES}.")
+#set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} ${ARCH_FLAGS}")
+#set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} "-O3")
 
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
