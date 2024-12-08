@@ -251,15 +251,6 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
                                              static_cast<char *>(m_buffers[outputBinding]),
                                              outputLength * sizeof(T), cudaMemcpyDeviceToHost, inferenceCudaStream));
 
-    // // Copy the outputs back to CPU
-    // const auto outputLength = m_outputLengths[0];
-    // output = cv::Mat(batchSize, outputLength, CV_32F);
-
-    // int32_t outputBinding = numInputs; // We start at index m_inputDims.size() to account for the inputs in our m_buffers
-    // Util::checkCudaErrorCode(cudaMemcpyAsync(output.data, 
-    //                                          static_cast<char *>(m_buffers[outputBinding]),
-    //                                          outputLength * sizeof(T) * batchSize, cudaMemcpyDeviceToHost, inferenceCudaStream));
-
     // Synchronize the cuda stream
     Util::checkCudaErrorCode(cudaStreamSynchronize(inferenceCudaStream));
     Util::checkCudaErrorCode(cudaStreamDestroy(inferenceCudaStream));
@@ -318,16 +309,9 @@ bool Engine<T>::runInference(const cv::Mat &input, cv::Mat &output) {
     }
 
     nvinfer1::Dims4 inputDims = {batchSize, dims.d[0], dims.d[1], dims.d[2]};
-    std::cout << "m_IOTensorNames: " << m_IOTensorNames[0] << std::endl;
-    m_context->setInputShape(m_IOTensorNames[0].c_str(),
-                             inputDims); // Define the batch size
+    m_context->setInputShape(m_IOTensorNames[0].c_str(), inputDims); // Define the batch size
 
     auto tShape = m_context->getTensorShape(m_IOTensorNames[0].c_str());
-    // print shape
-    std::cout << "Shape: ";
-    for (int i = 0; i < tShape.nbDims; ++i)
-        std::cout << tShape.d[i] << " ";
-    std::cout << std::endl;
 
     // OpenCV reads images into memory in NHWC format, while TensorRT expects
     // images in NCHW format. The following method converts NHWC to NCHW. Even
