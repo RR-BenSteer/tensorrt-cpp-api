@@ -140,6 +140,7 @@ public:
     // single output feature vector
     static void transformOutput(std::vector<std::vector<std::vector<T>>> &input, std::vector<T> &output);
     // Convert NHWC to NCHW and apply scaling and mean subtraction
+    static cv::cuda::GpuMat blobFromGpuMats(const std::vector<cv::cuda::GpuMat> &batchInput);
     static cv::cuda::GpuMat blobFromGpuMats(const std::vector<cv::cuda::GpuMat> &batchInput, const std::array<float, 3> &subVals,
                                             const std::array<float, 3> &divVals, bool normalize, bool swapRB = false);
     static cv::cuda::GpuMat blobFromMat(const cv::Mat &batchInput, const std::array<float, 3> &subVals,

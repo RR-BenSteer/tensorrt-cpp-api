@@ -48,9 +48,12 @@ cv::cuda::GpuMat Engine<T>::resizeKeepAspectRatioPadRightBottom(const cv::cuda::
     unpad_w = constrainToMultipleOf(unpad_w, multiple, width, -1);
     unpad_h = r * input.rows;
     unpad_h = constrainToMultipleOf(unpad_h, multiple, height, -1);
-    cv::cuda::GpuMat re(unpad_h, unpad_w, CV_8UC3);
+    // cv::cuda::GpuMat re(unpad_h, unpad_w, CV_8UC3);
+    // new matrix with same type as input
+    cv::cuda::GpuMat re(unpad_h, unpad_w, input.type());
     cv::cuda::resize(input, re, re.size());
-    cv::cuda::GpuMat out(height, width, CV_8UC3, bgcolor);
+    // cv::cuda::GpuMat out(height, width, CV_8UC3, bgcolor);
+    cv::cuda::GpuMat out(height, width, input.type(), bgcolor);
     re.copyTo(out(cv::Rect(0, 0, re.cols, re.rows)));
     return out;
 }
@@ -105,39 +108,66 @@ template <typename T> std::string Engine<T>::serializeEngineOptions(const Option
 }
 
 template <typename T>
+cv::cuda::GpuMat Engine<T>::blobFromGpuMats(const std::vector<cv::cuda::GpuMat> &batchInput) {
+   
+    CHECK(!batchInput.empty())
+    CHECK(batchInput[0].channels() == 3 || batchInput[0].channels() == 1)
+    
+    cv::cuda::GpuMat gpuDst(1, batchInput[0].rows * batchInput[0].cols * batchInput.size(), batchInput[0].type());
+
+    size_t width = batchInput[0].cols * batchInput[0].rows;
+    int elemSize = (int)CV_ELEM_SIZE(CV_MAT_DEPTH(batchInput[0].type()));
+    for (size_t img = 0; img < batchInput.size(); ++img) {
+        if (batchInput[0].channels() == 3) {
+            std::vector<cv::cuda::GpuMat> input_channels{
+                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_MAT_DEPTH(batchInput[0].type()), &(gpuDst.ptr()[elemSize*(0 + width * 3 * img)])),
+                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_MAT_DEPTH(batchInput[0].type()), &(gpuDst.ptr()[elemSize*(width + width * 3 * img)])),
+                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_MAT_DEPTH(batchInput[0].type()), &(gpuDst.ptr()[elemSize*(width * 2 + width * 3 * img)]))};
+            cv::cuda::split(batchInput[img], input_channels); // HWC -> CHW
+        } else { // 1 channel
+            std::vector<cv::cuda::GpuMat> input_channels{
+                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_MAT_DEPTH(batchInput[0].type()), &(gpuDst.ptr()[elemSize*(0 + width * img)]))};
+            cv::cuda::split(batchInput[img], input_channels); // HWC -> CHW
+        }
+    }
+    return gpuDst;
+}
+
+template <typename T>
 cv::cuda::GpuMat Engine<T>::blobFromGpuMats(const std::vector<cv::cuda::GpuMat> &batchInput, const std::array<float, 3> &subVals,
                                             const std::array<float, 3> &divVals, bool normalize, bool swapRB) {
    
     CHECK(!batchInput.empty())
     CHECK(batchInput[0].channels() == 3)
     
-    cv::cuda::GpuMat gpu_dst(1, batchInput[0].rows * batchInput[0].cols * batchInput.size(), CV_8UC3);
+    cv::cuda::GpuMat gpuDst(1, batchInput[0].rows * batchInput[0].cols * batchInput.size(), batchInput[0].type());
 
     size_t width = batchInput[0].cols * batchInput[0].rows;
+    int elemSize = (int)CV_ELEM_SIZE(CV_MAT_DEPTH(batchInput[0].type()));
     if (swapRB) {
         for (size_t img = 0; img < batchInput.size(); ++img) {
             std::vector<cv::cuda::GpuMat> input_channels{
-                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width * 2 + width * 3 * img])),
-                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width + width * 3 * img])),
-                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[0 + width * 3 * img]))};
+                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_MAT_DEPTH(batchInput[0].type()), &(gpuDst.ptr()[elemSize*(width * 2 + width * 3 * img)])),
+                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_MAT_DEPTH(batchInput[0].type()), &(gpuDst.ptr()[elemSize*(width + width * 3 * img)])),
+                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_MAT_DEPTH(batchInput[0].type()), &(gpuDst.ptr()[elemSize*(0 + width * 3 * img)]))};
             cv::cuda::split(batchInput[img], input_channels); // HWC -> CHW
         }
     } else {
         for (size_t img = 0; img < batchInput.size(); ++img) {
             std::vector<cv::cuda::GpuMat> input_channels{
-                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[0 + width * 3 * img])),
-                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width + width * 3 * img])),
-                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_8U, &(gpu_dst.ptr()[width * 2 + width * 3 * img]))};
+                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_MAT_DEPTH(batchInput[0].type()), &(gpuDst.ptr()[elemSize*(0 + width * 3 * img)])),
+                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_MAT_DEPTH(batchInput[0].type()), &(gpuDst.ptr()[elemSize*(width + width * 3 * img)])),
+                cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_MAT_DEPTH(batchInput[0].type()), &(gpuDst.ptr()[elemSize*(width * 2 + width * 3 * img)]))};
             cv::cuda::split(batchInput[img], input_channels); // HWC -> CHW
         }
     }
     cv::cuda::GpuMat mfloat;
     if (normalize) {
         // [0.f, 1.f]
-        gpu_dst.convertTo(mfloat, CV_32FC3, 1.f / 255.f);
+        gpuDst.convertTo(mfloat, CV_32FC3, 1.f / 255.f);
     } else {
         // [0.f, 255.f]
-        gpu_dst.convertTo(mfloat, CV_32FC3);
+        gpuDst.convertTo(mfloat, CV_32FC3);
     }
 
     // Apply scaling and mean subtraction
@@ -177,38 +207,38 @@ cv::cuda::GpuMat Engine<T>::blobFromMat(const cv::Mat &batchInput, const std::ar
     // std::cout << "reshaped size: " << batchInputReshaped.size[0] << ", " << batchInputReshaped.size[1] << std::endl;
 
     // cv::cuda::GpuMat mfloat; //(batchInput.size(), batchInput.type());
-    // cv::cuda::GpuMat gpu_dst(1, batchInput.size[0] * batchInput.size[1] * batchInput.size[2], CV_32FC1);
-    // gpu_dst.upload(batchInput);
+    // cv::cuda::GpuMat gpuDst(1, batchInput.size[0] * batchInput.size[1] * batchInput.size[2], CV_32FC1);
+    // gpuDst.upload(batchInput);
     // std::cout << "input type: " << batchInput.type() << std::endl;
     cv::Mat batchInputFlat = batchInput.reshape(1, {1, batchInput.size[0] * batchInput.size[1] * batchInput.size[2] * batchInput.size[3]});
     // batchInputFlat.convertTo(batchInputFlat, CV_32FC1);
-    // cv::cuda::GpuMat gpu_dst(batchInput.reshape(1, {1, batchInput.size[0] * batchInput.size[1] * batchInput.size[2] * batchInput.size[3]}));
-    // gpu_dst.upload(batchInputFlat);
-    cv::cuda::GpuMat gpu_dst(batchInputFlat);
-    // std::cout << "GPU mat element size: " << gpu_dst.elemSize() << std::endl;
+    // cv::cuda::GpuMat gpuDst(batchInput.reshape(1, {1, batchInput.size[0] * batchInput.size[1] * batchInput.size[2] * batchInput.size[3]}));
+    // gpuDst.upload(batchInputFlat);
+    cv::cuda::GpuMat gpuDst(batchInputFlat);
+    // std::cout << "GPU mat element size: " << gpuDst.elemSize() << std::endl;
 
 
     // size_t width = batchInput[0].cols * batchInput[0].rows;
     // for (size_t img = 0; img < batchInput.size(); img++) {
     //     std::vector<cv::cuda::GpuMat> input_channels{
-    //         cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpu_dst.ptr()[0 + width * 3 * img])),
-    //         cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpu_dst.ptr()[width + width * 3 * img])),
-    //         cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpu_dst.ptr()[width * 2 + width * 3 * img]))};
+    //         cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpuDst.ptr()[0 + width * 3 * img])),
+    //         cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpuDst.ptr()[width + width * 3 * img])),
+    //         cv::cuda::GpuMat(batchInput[0].rows, batchInput[0].cols, CV_32FC1, &(gpuDst.ptr()[width * 2 + width * 3 * img]))};
     //     cv::cuda::split(batchInput[img], input_channels); // HWC -> CHW
     // }
 
     // cv::cuda::GpuMat mfloat;
     // if (normalize) {
     //     // [0.f, 1.f]
-    //     gpu_dst.convertTo(mfloat, CV_32FC1, 1.f / 255.f);
+    //     gpuDst.convertTo(mfloat, CV_32FC1, 1.f / 255.f);
     // } else {
     //     // [0.f, 255.f]
-    //     gpu_dst.convertTo(mfloat, CV_32FC1);
+    //     gpuDst.convertTo(mfloat, CV_32FC1);
     // }
 
     // // Apply scaling and mean subtraction
     // cv::cuda::subtract(mfloat, cv::Scalar(subVals[0], subVals[1], subVals[2]), mfloat, cv::noArray(), -1);
     // cv::cuda::divide(mfloat, cv::Scalar(divVals[0], divVals[1], divVals[2]), mfloat, 1, -1);
 
-    return gpu_dst;
+    return gpuDst;
 }

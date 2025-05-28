@@ -198,14 +198,15 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
         nvinfer1::Dims4 inputDims = {batchSize, dims.d[0], dims.d[1], dims.d[2]};
         m_context->setInputShape(m_IOTensorNames[i].c_str(),
                                  inputDims); // Define the batch size
-
         // OpenCV reads images into memory in NHWC format, while TensorRT expects
         // images in NCHW format. The following method converts NHWC to NCHW. Even
         // though TensorRT expects NCHW at IO, during optimization, it can
         // internally use NHWC to optimize cuda kernels See:
         // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#data-layout
         // Copy over the input data and perform the preprocessing
-        auto mfloat = blobFromGpuMats(batchInput, m_subVals, m_divVals, m_normalize);
+        // auto mfloat = blobFromGpuMats(batchInput, m_subVals, m_divVals, m_normalize);
+        // Assume already preprocessed input
+        auto mfloat = blobFromGpuMats(batchInput);
         preprocessedInputs.push_back(mfloat);
         m_buffers[i] = mfloat.ptr<void>();
     }
@@ -223,6 +224,15 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
     for (size_t i = 0; i < m_buffers.size(); ++i) {
         bool status = m_context->setTensorAddress(m_IOTensorNames[i].c_str(), m_buffers[i]);
         if (!status) {
+            return false;
+        }
+    }
+
+    // Check that all bindings are set before enqueue
+    for (int i = 0; i < m_engine->getNbIOTensors(); ++i) {
+        const char* tensorName = m_engine->getIOTensorName(i);
+        if (!m_context->getTensorAddress(tensorName)) {
+            std::cerr << "Tensor " << tensorName << " not bound!" << std::endl;
             return false;
         }
     }
@@ -245,7 +255,12 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
     // TODO: currently only supports batch size 1
     const auto outputLength = m_outputLengths[0];
     const auto outputDim = m_outputDims[0];
-    output = cv::Mat(outputDim.d[1], outputDim.d[2], CV_32FC1);
+    if (outputDim.nbDims == 4)
+        output = cv::Mat(outputDim.d[2], outputDim.d[3], CV_32FC1);
+    else if (outputDim.nbDims == 3)
+        output = cv::Mat(outputDim.d[1], outputDim.d[2], CV_32FC1);
+    else
+        throw std::runtime_error("Output tensor is not 3D or 4D");
     int32_t outputBinding = numInputs; // We start at index m_inputDims.size() to account for the inputs in our m_buffers
     Util::checkCudaErrorCode(cudaMemcpyAsync(output.data, 
                                              static_cast<char *>(m_buffers[outputBinding]),
@@ -254,6 +269,7 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
     // Synchronize the cuda stream
     Util::checkCudaErrorCode(cudaStreamSynchronize(inferenceCudaStream));
     Util::checkCudaErrorCode(cudaStreamDestroy(inferenceCudaStream));
+
     return true;
 }
 
