@@ -118,8 +118,8 @@ bool Engine<T>::loadNetwork(std::string trtModelPath, const std::array<float, 3>
 
         if (tensorType == nvinfer1::TensorIOMode::kINPUT) {
             // The implementation currently only supports inputs of type float
-            if (m_engine->getTensorDataType(tensorName) != nvinfer1::DataType::kFLOAT) {
-                auto msg = "Error, the implementation currently only supports float inputs";
+            if (tensorDataType != nvinfer1::DataType::kFLOAT) {
+                auto msg = "Error, the implementation currently only supports float inputs. Input type of this model is " + std::to_string(static_cast<int>(tensorDataType)) + ".";
                 spdlog::error(msg);
                 throw std::runtime_error(msg);
             }

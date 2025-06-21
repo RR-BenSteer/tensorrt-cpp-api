@@ -50,6 +50,7 @@ Int8EntropyCalibrator2::Int8EntropyCalibrator2(int32_t batchSize, int32_t inputW
     }
 
     m_imgPaths = getFilesInDirectory(calibDataDirPath);
+    std::cout << "num images in calibration data path: " << m_imgPaths.size() << std::endl;
     if (m_imgPaths.size() < static_cast<size_t>(batchSize)) {
         auto msg = "Error, there are fewer calibration images than the specified batch size!";
         spdlog::error(msg);
