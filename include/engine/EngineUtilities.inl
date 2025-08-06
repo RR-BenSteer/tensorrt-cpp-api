@@ -35,6 +35,12 @@ int Engine<T>::constrainToMultipleOf(const float x, const int multiple, const in
 }
 
 template <typename T>
+void Engine<T>::extractAndResizeROI(const cv::cuda::GpuMat &input, cv::cuda::GpuMat &output, size_t roi_h, size_t roi_w, size_t height, size_t width) {
+    cv::cuda::GpuMat roi(input, cv::Rect(0, 0, roi_w, roi_h));
+    cv::cuda::resize(roi, output, cv::Size(width, height), 0, 0, cv::INTER_LINEAR);
+}
+
+template <typename T>
 void Engine<T>::extractAndResizeROI(const cv::Mat &input, cv::Mat &output, size_t roi_h, size_t roi_w, size_t height, size_t width) {
     cv::Mat roi = input(cv::Rect(0, 0, roi_w, roi_h));
     cv::resize(roi, output, cv::Size(width, height), 0, 0, cv::INTER_LINEAR);

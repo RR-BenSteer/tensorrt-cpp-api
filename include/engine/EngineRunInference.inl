@@ -132,7 +132,7 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
 }
 
 template <typename T>
-bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::Mat &output) {
+bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::cuda::GpuMat &output) {
     // First we do some error checking
     if (inputs.empty() || inputs[0].empty()) {
         spdlog::error("Provided input vector is empty!");
@@ -243,34 +243,36 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
         return false;
     }
 
-    // Copy the outputs back to CPU
-    // const auto outputLength = m_outputLengths[0];
-    // const auto outputDim = m_outputDims[0];
-    // int dims[] = {batchSize, outputDim.d[1], outputDim.d[2]};
-    // output = cv::Mat(3, dims, CV_32F);
-    // int32_t outputBinding = numInputs; // We start at index m_inputDims.size() to account for the inputs in our m_buffers
-    // Util::checkCudaErrorCode(cudaMemcpyAsync(output.data, 
-    //                                          static_cast<char *>(m_buffers[outputBinding]),
-    //                                          outputLength * sizeof(T) * batchSize, cudaMemcpyDeviceToHost, inferenceCudaStream));
-    // TODO: currently only supports batch size 1
-    const auto outputLength = m_outputLengths[0];
     const auto outputDim = m_outputDims[0];
-    if (outputDim.nbDims == 4)
-        output = cv::Mat(outputDim.d[2], outputDim.d[3], CV_32FC1);
-    else if (outputDim.nbDims == 3)
-        output = cv::Mat(outputDim.d[1], outputDim.d[2], CV_32FC1);
-    else
+
+    cv::Size outputSize;
+    if (outputDim.nbDims == 4) {
+        outputSize = cv::Size(outputDim.d[3], outputDim.d[2]);
+    }
+    else if (outputDim.nbDims == 3) {
+        outputSize = cv::Size(outputDim.d[2], outputDim.d[1]);
+    }
+    else {
         throw std::runtime_error("Output tensor is not 3D or 4D");
-    int32_t outputBinding = numInputs; // We start at index m_inputDims.size() to account for the inputs in our m_buffers
-    Util::checkCudaErrorCode(cudaMemcpyAsync(output.data, 
-                                             static_cast<char *>(m_buffers[outputBinding]),
-                                             outputLength * sizeof(T), cudaMemcpyDeviceToHost, inferenceCudaStream));
+    }
+
+    int32_t outputBinding = numInputs;
+    void* devicePtr = m_buffers[outputBinding];
+    output = cv::cuda::GpuMat(outputSize, CV_32FC1, devicePtr);
 
     // Synchronize the cuda stream
     Util::checkCudaErrorCode(cudaStreamSynchronize(inferenceCudaStream));
     Util::checkCudaErrorCode(cudaStreamDestroy(inferenceCudaStream));
 
     return true;
+}
+
+
+template <typename T>
+bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::Mat &output) {
+    cv::cuda::GpuMat gpuOutput;
+    runInference(inputs, gpuOutput);
+    gpuOutput.download(output);
 }
 
 
