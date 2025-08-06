@@ -243,9 +243,10 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
         return false;
     }
 
+    // Determine output size
     const auto outputDim = m_outputDims[0];
-
     cv::Size outputSize;
+
     if (outputDim.nbDims == 4) {
         outputSize = cv::Size(outputDim.d[3], outputDim.d[2]);
     }
@@ -256,9 +257,12 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
         throw std::runtime_error("Output tensor is not 3D or 4D");
     }
 
-    int32_t outputBinding = numInputs;
-    void* devicePtr = m_buffers[outputBinding];
-    output = cv::cuda::GpuMat(outputSize, CV_32FC1, devicePtr);
+    // Copy from buffer to GpuMat
+    output.create(outputSize, CV_32FC1);
+    Util::checkCudaErrorCode(cudaMemcpy2DAsync(output.data, output.step,
+                                             m_buffers[numInputs], outputSize.width * sizeof(T),
+                                             outputSize.width * sizeof(T), outputSize.height,
+                                             cudaMemcpyDeviceToDevice, inferenceCudaStream));
 
     // Synchronize the cuda stream
     Util::checkCudaErrorCode(cudaStreamSynchronize(inferenceCudaStream));
