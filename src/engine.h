@@ -93,7 +93,7 @@ public:
     // Run inference.
     // Input format [input][batch][cv::cuda::GpuMat]
     // Output format [cv::Mat]
-    bool runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::cuda::GpuMat &output);
+    bool runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::cuda::GpuMat &output) override;
     bool runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::Mat &output) override;
 
     // Run inference.

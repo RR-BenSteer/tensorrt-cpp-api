@@ -16,6 +16,8 @@ public:
     virtual bool runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, 
                               std::vector<std::vector<std::vector<T>>> &featureVectors) = 0;
     virtual bool runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, 
+                              cv::cuda::GpuMat &output) = 0;
+    virtual bool runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, 
                               cv::Mat &output) = 0;
     virtual bool runInference(const cv::Mat &input, cv::Mat &output) = 0;
     virtual bool runInferenceCUDA(const std::vector<int> &inputShape, T *input, cv::Mat &output) = 0;
