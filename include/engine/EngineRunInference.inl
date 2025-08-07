@@ -131,8 +131,9 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
     return true;
 }
 
+
 template <typename T>
-bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::cuda::GpuMat &output) {
+bool Engine<T>::runInferenceWithNoGpuCopy(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::cuda::GpuMat &output) {
     // First we do some error checking
     if (inputs.empty() || inputs[0].empty()) {
         spdlog::error("Provided input vector is empty!");
@@ -245,8 +246,8 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
 
     // Determine output size
     const auto outputDim = m_outputDims[0];
-    cv::Size outputSize;
 
+    cv::Size outputSize;
     if (outputDim.nbDims == 4) {
         outputSize = cv::Size(outputDim.d[3], outputDim.d[2]);
     }
@@ -257,12 +258,8 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
         throw std::runtime_error("Output tensor is not 3D or 4D");
     }
 
-    // Copy from buffer to GpuMat
-    output.create(outputSize, CV_32FC1);
-    Util::checkCudaErrorCode(cudaMemcpy2DAsync(output.data, output.step,
-                                             m_buffers[numInputs], outputSize.width * sizeof(T),
-                                             outputSize.width * sizeof(T), outputSize.height,
-                                             cudaMemcpyDeviceToDevice, inferenceCudaStream));
+    // Assign GpuMat to output, wrapping the internal data buffer
+    output = cv::cuda::GpuMat(outputSize, CV_32FC1, (void*) m_buffers[numInputs]);
 
     // Synchronize the cuda stream
     Util::checkCudaErrorCode(cudaStreamSynchronize(inferenceCudaStream));
@@ -273,11 +270,22 @@ bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &i
 
 
 template <typename T>
-bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::Mat &output) {
-    cv::cuda::GpuMat gpuOutput;
-    bool didSucceed = runInference(inputs, gpuOutput);
+bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::cuda::GpuMat &output) {
+    cv::cuda::GpuMat wrappedOutput;
+    bool didSucceed = runInferenceWithNoGpuCopy(inputs, wrappedOutput);
     if (didSucceed) {
-        gpuOutput.download(output);
+        output = wrappedOutput.clone(); // device-to-device copy - "output" now owns the memory
+    }
+    return didSucceed;
+}
+
+
+template <typename T>
+bool Engine<T>::runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::Mat &output) {
+    cv::cuda::GpuMat wrappedOutput;
+    bool didSucceed = runInferenceWithNoGpuCopy(inputs, wrappedOutput);
+    if (didSucceed) {
+        wrappedOutput.download(output); // download to CPU
     }
     return didSucceed;
 }

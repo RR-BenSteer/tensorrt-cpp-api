@@ -92,8 +92,12 @@ public:
 
     // Run inference.
     // Input format [input][batch][cv::cuda::GpuMat]
-    // Output format [cv::Mat]
+    // Output format [cv::cuda::GpuMat]
     bool runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::cuda::GpuMat &output) override;
+
+    // Run inference.
+    // Input format [input][batch][cv::cuda::GpuMat]
+    // Output format [cv::Mat]
     bool runInference(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::Mat &output) override;
 
     // Run inference.
@@ -157,6 +161,11 @@ private:
     void getDeviceNames(std::vector<std::string> &deviceNames);
 
     void clearGpuBuffers();
+
+    // Run inference. Output GpuMat wraps an internal data buffer and should be cloned or downloaded immediately.
+    // Input format [input][batch][cv::cuda::GpuMat]
+    // Output format [cv::cuda::GpuMat]
+    bool runInferenceWithNoGpuCopy(const std::vector<std::vector<cv::cuda::GpuMat>> &inputs, cv::cuda::GpuMat &output);
 
     // Normalization, scaling, and mean subtraction of inputs
     std::array<float, 3> m_subVals{};
